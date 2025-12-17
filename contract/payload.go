@@ -121,3 +121,31 @@ func parseExecuteLottery(payload string) *ExecuteLotteryArgs {
 		LotteryID: lotteryID,
 	}
 }
+
+// parseVerifyLottery parses the payload for verify_lottery
+// Format: lotteryID|seed
+// Example: "1|12345678901234567890"
+func parseVerifyLottery(payload string) *VerifyLotteryArgs {
+	parts := strings.Split(payload, "|")
+	if len(parts) != 2 {
+		sdk.Abort("invalid verify_lottery payload format: expected lotteryID|seed")
+	}
+
+	lotteryID, err := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		sdk.Abort("invalid lottery ID")
+	}
+	if lotteryID == 0 {
+		sdk.Abort("lottery ID must be greater than 0")
+	}
+
+	seed, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		sdk.Abort("invalid seed")
+	}
+
+	return &VerifyLotteryArgs{
+		LotteryID: lotteryID,
+		Seed:      seed,
+	}
+}

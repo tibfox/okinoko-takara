@@ -160,11 +160,79 @@ These events can be tracked and verified by anyone.
 
 ## Security & Fairness
 
-### Provably Fair
-Winner selection uses deterministic randomness based on transaction data, making it:
-- Verifiable by anyone
-- Impossible to manipulate
-- Transparent and auditable
+### Provably Fair Randomness
+Winner selection uses cryptographically secure randomness (SHA-256) based on:
+- Transaction ID (unique to each execution)
+- Block height and timestamp
+- Executor's address
+
+This makes the lottery:
+- **Verifiable** – Anyone can verify the results were determined fairly
+- **Unpredictable** – Results cannot be predicted before execution
+- **Transparent** – All randomness sources are public on-chain
+- **Auditable** – Complete execution history is available
+
+### Verifying Results
+
+After a lottery is executed, anyone can independently verify that the winners were selected fairly. There are two ways to verify:
+
+#### Method 1: Using the verify_lottery Contract Function (Recommended)
+
+The simplest way to verify is using the built-in `verify_lottery` contract function:
+
+```javascript
+// Call the verify_lottery contract function
+// Format: lotteryID|seed
+const result = await contract.call("verify_lottery", "1|12345678901234567890")
+
+// Result will be:
+// Success: "verification successful: 3 winner(s) match|1:hive:alice|2:hive:bob|3:hive:charlie"
+// Failure: "verification failed: winners do not match"
+```
+
+To verify a lottery:
+1. Retrieve the lottery seed from the execution event or on-chain data
+2. Call `verify_lottery` with the lottery ID and seed
+3. The contract re-runs the selection algorithm and compares results
+4. Returns success or failure with the winner list
+
+**Key benefits:**
+- ✅ No need to implement the algorithm yourself
+- ✅ Works directly on-chain with a single contract call
+- ✅ Anyone can verify without downloading any data
+
+#### Method 2: Off-Chain Verification
+
+For advanced users who want to verify independently without calling the contract:
+
+```go
+// 1. Load executed lottery data from chain
+lottery := getLotteryFromChain(lotteryID)
+
+// 2. Verify the lottery was executed
+if lottery.State != Executed {
+    return error("lottery not executed")
+}
+
+// 3. Re-run winner selection with the stored seed
+verifiedWinners := selectRandomWinners(
+    lottery.Participants,  // Participant addresses and ticket counts
+    lottery.TotalTickets,  // Total number of tickets
+    len(lottery.Winners),  // Number of winners
+    lottery.RandomSeed,    // Seed used during execution
+)
+
+// 4. Compare results
+for i, winner := range lottery.Winners {
+    if winner.Address != verifiedWinners[i] {
+        return error("winner mismatch - lottery may be compromised!")
+    }
+}
+
+// Results match - lottery was provably fair!
+```
+
+Because the random seed is stored on-chain and the selection algorithm is deterministic, verification always produces the same results. This makes cheating impossible without detection.
 
 ### Deadline Enforcement
 - You cannot join a lottery after its deadline
@@ -198,10 +266,13 @@ For questions or support, visit:
 
 ## Contract Parameters Quick Reference
 
-| Parameter | Format | Example |
-|-----------|--------|---------|
+| Action | Format | Example |
+|--------|--------|---------|
 | Create Lottery | `name\|days\|burn%\|shares\|price` | `Weekly Draw\|7\|10\|100\|5.000` |
 | Join Lottery | `lotteryID` | `1` |
 | Execute Lottery | `lotteryID` | `1` |
+| Verify Lottery | `lotteryID\|seed` | `1\|12345678901234567890` |
 
-**Note:** When joining, you must also provide a `transfer.allow` intent with the amount of HIVE you want to spend on tickets.
+**Notes:**
+- When joining, you must also provide a `transfer.allow` intent with the amount of HIVE you want to spend on tickets.
+- When verifying, use the seed from the lottery execution event to independently verify the results.

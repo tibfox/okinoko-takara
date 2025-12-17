@@ -1,8 +1,11 @@
 package contract_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+
+	ledgerDb "vsc-node/modules/db/vsc/ledger"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -786,6 +789,198 @@ func TestMaxDeadlineDays(t *testing.T) {
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "deadline must be 90 days or less")
+}
+
+// ============================================================================
+// VERIFICATION TESTS
+// ============================================================================
+
+// TestVerifyLotteryResults tests that lottery results are deterministic and verifiable
+func TestVerifyLotteryResults(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Create lottery with multiple winners
+	CallContract(t, ct, "create_lottery", PayloadString("Verification Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+
+	// Add participants
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("10.000"), "hive:bob", true, uint(700_000_000))
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:charlie", true, uint(700_000_000))
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("15.000"), "hive:dave", true, uint(700_000_000))
+
+	// Execute lottery after deadline
+	futureTimestamp := "2025-09-05T00:00:00"
+	result1, _, logs1 := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:executor1", true, uint(700_000_000), futureTimestamp)
+	assert.True(t, result1.Success)
+
+	// Extract winners from first execution
+	var winners1 []string
+	for _, logValues := range logs1 {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lp|") {
+				// Parse winner from payout event
+				// Format: lp|id:X|winner:ADDRESS|amount:Y.ZZZ
+				parts := strings.Split(log, "|")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "winner:") {
+						winner := strings.TrimPrefix(part, "winner:")
+						winners1 = append(winners1, winner)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	assert.Equal(t, 3, len(winners1), "Should have 3 winners")
+
+	// Now verify: Execute the same lottery again with a fresh contract state
+	// This simulates an independent verifier re-running the selection
+	ct2 := SetupContractTest()
+
+	// Recreate the exact same lottery conditions
+	CallContract(t, ct2, "create_lottery", PayloadString("Verification Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
+	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("10.000"), "hive:bob", true, uint(700_000_000))
+	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:charlie", true, uint(700_000_000))
+	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("15.000"), "hive:dave", true, uint(700_000_000))
+
+	// Execute with same timestamp and executor (same entropy sources = same seed)
+	result2, _, logs2 := CallContractAt(t, ct2, "execute_lottery", PayloadString("1"), nil, "hive:executor1", true, uint(700_000_000), futureTimestamp)
+	assert.True(t, result2.Success)
+
+	// Extract winners from second execution
+	var winners2 []string
+	for _, logValues := range logs2 {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lp|") {
+				parts := strings.Split(log, "|")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "winner:") {
+						winner := strings.TrimPrefix(part, "winner:")
+						winners2 = append(winners2, winner)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	assert.Equal(t, 3, len(winners2), "Should have 3 winners in verification")
+
+	// Verify that both executions produced identical winners in identical order
+	// This proves the lottery is deterministic and verifiable
+	for i := 0; i < len(winners1); i++ {
+		assert.Equal(t, winners1[i], winners2[i], "Winner %d should match between executions", i+1)
+	}
+
+	t.Logf("Verification successful! Winners were identical:")
+	t.Logf("  1st place (50%%): %s", winners1[0])
+	t.Logf("  2nd place (30%%): %s", winners1[1])
+	t.Logf("  3rd place (20%%): %s", winners1[2])
+}
+
+// TestVerifyLotteryFunction tests the verify_lottery contract function with many participants
+func TestVerifyLotteryFunction(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Create lottery with 1 HIVE ticket price, similar to large scale test
+	CallContract(t, ct, "create_lottery", PayloadString("Verify Function Test|1|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
+
+	// Add 50 participants to get better randomness (enough to make collisions extremely unlikely)
+	for i := 0; i < 50; i++ {
+		participantName := "hive:user" + strconv.Itoa(i)
+		// Deposit funds for this participant
+		ct.Deposit(participantName, 200000, ledgerDb.AssetHive)
+		// Each participant buys 1 ticket
+		CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("1.000"), participantName, true, uint(700_000_000))
+	}
+
+	// Execute lottery
+	futureTimestamp := "2025-09-05T00:00:00"
+	execResult, _, execLogs := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:executor", true, uint(700_000_000), futureTimestamp)
+	assert.True(t, execResult.Success)
+
+	// Extract the winner from execution logs
+	var actualWinner string
+	for _, logValues := range execLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lp|") {
+				parts := strings.Split(log, "|")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "winner:") {
+						actualWinner = strings.TrimPrefix(part, "winner:")
+						break
+					}
+				}
+			}
+		}
+	}
+
+	t.Logf("Actual winner from execution: %s", actualWinner)
+	assert.NotEmpty(t, actualWinner, "Should have a winner")
+
+	// Extract the seed from execution logs (it's in the execution event)
+	var seed string
+	for _, logValues := range execLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "le|") {
+				parts := strings.Split(log, "|")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "seed:") {
+						seed = strings.TrimPrefix(part, "seed:")
+						break
+					}
+				}
+			}
+		}
+	}
+
+	t.Logf("Seed from execution: %s", seed)
+	assert.NotEmpty(t, seed, "Seed should be present in execution logs")
+
+	// Now verify using the verify_lottery function with the correct seed
+	verifyPayload := "1|" + seed
+	verifyResult, _, _ := CallContract(t, ct, "verify_lottery", PayloadString(verifyPayload), nil, "hive:anyone", true, uint(700_000_000))
+
+	assert.True(t, verifyResult.Success)
+	assert.Contains(t, verifyResult.Ret, "verification successful")
+	assert.Contains(t, verifyResult.Ret, "1 winner(s) match")
+	assert.Contains(t, verifyResult.Ret, actualWinner)
+
+	t.Logf("Verification result: %s", verifyResult.Ret)
+
+	// Test with wrong seed - with 50 participants, it's extremely unlikely to get the same winner
+	wrongSeed := "12345678901234567890"
+	wrongVerifyPayload := "1|" + wrongSeed
+	wrongResult, _, _ := CallContract(t, ct, "verify_lottery", PayloadString(wrongVerifyPayload), nil, "hive:anyone", true, uint(700_000_000))
+
+	assert.True(t, wrongResult.Success) // Function executes successfully
+	assert.Contains(t, wrongResult.Ret, "verification failed", "Wrong seed should produce different winner with 50 participants")
+
+	t.Logf("Wrong seed result: %s", wrongResult.Ret)
+
+	// The key test: verify that using the CORRECT seed always works
+	verifyAgain, _, _ := CallContract(t, ct, "verify_lottery", PayloadString(verifyPayload), nil, "hive:anyone", true, uint(700_000_000))
+	assert.True(t, verifyAgain.Success)
+	assert.Contains(t, verifyAgain.Ret, "verification successful")
+	assert.Contains(t, verifyAgain.Ret, actualWinner)
+
+	t.Logf("Verified again successfully with correct seed")
+}
+
+// TestVerifyLotteryNotExecuted tests that verification fails for non-executed lotteries
+func TestVerifyLotteryNotExecuted(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Create lottery but don't execute
+	CallContract(t, ct, "create_lottery", PayloadString("Not Executed|7|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+
+	// Try to verify
+	result, _, _ := CallContract(t, ct, "verify_lottery", PayloadString("1|12345"), nil, "hive:anyone", false, uint(700_000_000))
+
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "lottery not executed yet")
 }
 
 // TestLargeScaleLottery tests lottery with 1000 participants

@@ -94,6 +94,12 @@ type ExecuteLotteryArgs struct {
 	LotteryID uint64
 }
 
+// VerifyLotteryArgs represents arguments for verifying a lottery
+type VerifyLotteryArgs struct {
+	LotteryID uint64
+	Seed      uint64
+}
+
 // AddressFromString converts a human string to the platform-specific address wrapper.
 func AddressFromString(s string) sdk.Address { return sdk.Address(s) }
 

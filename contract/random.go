@@ -1,57 +1,96 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"okinoko_lottery/sdk"
 )
 
-// generateRandomSeed creates a deterministic seed from transaction data
+// generateRandomSeed creates a cryptographically secure deterministic seed from transaction data
 func generateRandomSeed() uint64 {
 	env := currentEnv()
 
-	// Use transaction ID and block data to create a seed
-	seed := uint64(0)
+	// Collect entropy sources
+	h := sha256.New()
 
-	// Hash the transaction ID
+	// Add transaction ID (primary entropy source - unique per execution)
 	if env.TxId != "" {
-		for i := 0; i < len(env.TxId); i++ {
-			seed = seed*31 + uint64(env.TxId[i])
-		}
+		h.Write([]byte(env.TxId))
 	}
 
-	// Mix in block height if available
+	// Add block height
 	if env.BlockHeight > 0 {
-		seed ^= env.BlockHeight
+		buf := make([]byte, 8)
+		binary.LittleEndian.PutUint64(buf, env.BlockHeight)
+		h.Write(buf)
 	}
 
-	// Mix in timestamp
+	// Add timestamp
 	ts := nowUnix()
-	seed ^= uint64(ts)
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, uint64(ts))
+	h.Write(buf)
+
+	// Add sender address (prevents same-block manipulation)
+	sender := getSenderAddress()
+	h.Write([]byte(sender.String()))
+
+	// Get SHA-256 hash and convert first 8 bytes to uint64
+	hash := h.Sum(nil)
+	seed := binary.LittleEndian.Uint64(hash[:8])
 
 	return seed
 }
 
-// lcgRandom is a simple Linear Congruential Generator for deterministic randomness
-type lcgRandom struct {
-	state uint64
+// hashRandom uses SHA-256 based PRNG for cryptographically secure deterministic randomness
+type hashRandom struct {
+	seed    uint64
+	counter uint64
 }
 
-func newLCGRandom(seed uint64) *lcgRandom {
-	return &lcgRandom{state: seed}
+func newHashRandom(seed uint64) *hashRandom {
+	return &hashRandom{seed: seed, counter: 0}
 }
 
-// next generates the next random number
-func (r *lcgRandom) next() uint64 {
-	// LCG parameters from Numerical Recipes
-	r.state = (r.state*1664525 + 1013904223) & 0xFFFFFFFF
-	return r.state
+// next generates the next random uint64 using SHA-256
+func (r *hashRandom) next() uint64 {
+	h := sha256.New()
+
+	// Write seed
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, r.seed)
+	h.Write(buf)
+
+	// Write counter (ensures each call produces different output)
+	binary.LittleEndian.PutUint64(buf, r.counter)
+	h.Write(buf)
+
+	r.counter++
+
+	// Get first 8 bytes of hash as uint64
+	hash := h.Sum(nil)
+	return binary.LittleEndian.Uint64(hash[:8])
 }
 
-// intn returns a random number in [0, n)
-func (r *lcgRandom) intn(n int) int {
+// intn returns a random number in [0, n) without modulo bias
+// Uses rejection sampling to ensure uniform distribution
+func (r *hashRandom) intn(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	return int(r.next() % uint64(n))
+
+	// Calculate the largest multiple of n that fits in uint64
+	un := uint64(n)
+	max := ^uint64(0) - (^uint64(0) % un)
+
+	for {
+		val := r.next()
+		// Reject values that would cause bias
+		if val < max {
+			return int(val % un)
+		}
+		// If rejected, try again (expected iterations: ~1.0)
+	}
 }
 
 // selectRandomWinners picks random winners from weighted ticket pool
@@ -69,8 +108,8 @@ func selectRandomWinners(participants map[string]uint64, totalTickets uint64, wi
 		}
 	}
 
-	// Shuffle the pool using Fisher-Yates
-	rng := newLCGRandom(seed)
+	// Shuffle the pool using Fisher-Yates with cryptographically secure RNG
+	rng := newHashRandom(seed)
 	n := len(ticketPool)
 	for i := n - 1; i > 0; i-- {
 		j := rng.intn(i + 1)

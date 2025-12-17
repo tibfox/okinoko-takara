@@ -230,3 +230,55 @@ func execute_lottery(payload *string) *string {
 	ret := "lottery executed with " + strconv.FormatUint(uint64(len(lottery.Winners)), 10) + " winner(s)"
 	return &ret
 }
+
+//export verify_lottery
+func verify_lottery(payload *string) *string {
+	payloadStr := unwrapPayload(payload, "verify_lottery payload missing")
+	args := parseVerifyLottery(payloadStr)
+
+	// Load lottery (read-only, no state changes)
+	lottery := loadLottery(args.LotteryID)
+	if lottery == nil {
+		sdk.Abort("lottery not found")
+	}
+
+	// Lottery must be executed to verify
+	if lottery.State != LotteryStateExecuted {
+		sdk.Abort("lottery not executed yet - nothing to verify")
+	}
+
+	// Re-run winner selection with provided seed
+	winnerCount := len(lottery.WinnerShares)
+	verifiedWinners := selectRandomWinners(lottery.Participants, lottery.TotalTickets, winnerCount, args.Seed)
+
+	// Compare with actual winners
+	actualWinnerCount := len(lottery.Winners)
+	verifiedWinnerCount := len(verifiedWinners)
+
+	if actualWinnerCount != verifiedWinnerCount {
+		ret := "verification failed: winner count mismatch"
+		return &ret
+	}
+
+	// Check if all winners match
+	allMatch := true
+	for i := 0; i < actualWinnerCount; i++ {
+		if lottery.Winners[i].Address.String() != verifiedWinners[i].String() {
+			allMatch = false
+			break
+		}
+	}
+
+	if !allMatch {
+		ret := "verification failed: winners do not match"
+		return &ret
+	}
+
+	// Build result with winner list
+	ret := "verification successful: " + strconv.FormatUint(uint64(actualWinnerCount), 10) + " winner(s) match"
+	for i, winner := range lottery.Winners {
+		ret += "|" + strconv.Itoa(i+1) + ":" + winner.Address.String()
+	}
+
+	return &ret
+}
