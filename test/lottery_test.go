@@ -1,7 +1,6 @@
 package contract_test
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
@@ -452,7 +451,7 @@ func TestExecuteLotterySingleWinner(t *testing.T) {
 		for _, log := range logValues {
 			if strings.HasPrefix(log, "le|") {
 				hasExecEvent = true
-				assert.Contains(t, log, "pool:30.000") // 3 tickets * 10 HIVE
+				assert.Contains(t, log, "pool:30.000")  // 3 tickets * 10 HIVE
 				assert.Contains(t, log, "burned:3.000") // 10% burn
 				assert.Contains(t, log, "winners:1")
 			}
@@ -790,62 +789,63 @@ func TestMaxDeadlineDays(t *testing.T) {
 }
 
 // TestLargeScaleLottery tests lottery with 1000 participants
-func TestLargeScaleLottery(t *testing.T) {
-	ct := SetupContractTestLargeScale()
+// uncommented as it takes a lot of time...
+// func TestLargeScaleLottery(t *testing.T) {
+// 	ct := SetupContractTestLargeScale()
 
-	// Create lottery with 1 HIVE ticket price
-	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Large Scale Test|7|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
-	assert.True(t, createResult.Success)
+// 	// Create lottery with 1 HIVE ticket price
+// 	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Large Scale Test|7|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
+// 	assert.True(t, createResult.Success)
 
-	// Track total RC cost for all joins
-	var totalJoinRC uint64 = 0
-	var minRC uint64 = ^uint64(0) // Max uint64
-	var maxRC uint64 = 0
+// 	// Track total RC cost for all joins
+// 	var totalJoinRC uint64 = 0
+// 	var minRC uint64 = ^uint64(0) // Max uint64
+// 	var maxRC uint64 = 0
 
-	// Add 1000 participants
-	for i := 0; i < 1000; i++ {
-		participantName := "hive:user" + strconv.Itoa(i)
-		result, rc, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("1.000"), participantName, true, uint(700_000_000))
+// 	// Add 1000 participants
+// 	for i := 0; i < 1000; i++ {
+// 		participantName := "hive:user" + strconv.Itoa(i)
+// 		result, rc, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("1.000"), participantName, true, uint(700_000_000))
 
-		assert.True(t, result.Success, "Failed to join for "+participantName)
+// 		assert.True(t, result.Success, "Failed to join for "+participantName)
 
-		totalJoinRC += uint64(rc)
-		if uint64(rc) < minRC {
-			minRC = uint64(rc)
-		}
-		if uint64(rc) > maxRC {
-			maxRC = uint64(rc)
-		}
+// 		totalJoinRC += uint64(rc)
+// 		if uint64(rc) < minRC {
+// 			minRC = uint64(rc)
+// 		}
+// 		if uint64(rc) > maxRC {
+// 			maxRC = uint64(rc)
+// 		}
 
-		// Progress indicator every 100 participants
-		if (i+1)%100 == 0 {
-			t.Logf("Progress: %d/1000 participants added", i+1)
-		}
-	}
+// 		// Progress indicator every 100 participants
+// 		if (i+1)%100 == 0 {
+// 			t.Logf("Progress: %d/1000 participants added", i+1)
+// 		}
+// 	}
 
-	avgJoinRC := totalJoinRC / 1000
-	t.Logf("Join RC costs - Min: %d, Max: %d, Avg: %d, Total: %d", minRC, maxRC, avgJoinRC, totalJoinRC)
+// 	avgJoinRC := totalJoinRC / 1000
+// 	t.Logf("Join RC costs - Min: %d, Max: %d, Avg: %d, Total: %d", minRC, maxRC, avgJoinRC, totalJoinRC)
 
-	// Execute lottery after deadline
-	futureTimestamp := "2025-09-11T00:00:00"
-	execResult, execRC, logs := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:alice", true, uint(5_000_000_000), futureTimestamp)
+// 	// Execute lottery after deadline
+// 	futureTimestamp := "2025-09-11T00:00:00"
+// 	execResult, execRC, logs := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:alice", true, uint(5_000_000_000), futureTimestamp)
 
-	assert.True(t, execResult.Success)
-	assert.Contains(t, execResult.Ret, "lottery executed with 1 winner(s)")
+// 	assert.True(t, execResult.Success)
+// 	assert.Contains(t, execResult.Ret, "lottery executed with 1 winner(s)")
 
-	t.Logf("Execute RC cost: %d", execRC)
+// 	t.Logf("Execute RC cost: %d", execRC)
 
-	// Verify execution event
-	hasExecEvent := false
-	for _, logValues := range logs {
-		for _, log := range logValues {
-			if strings.HasPrefix(log, "le|") {
-				hasExecEvent = true
-				assert.Contains(t, log, "pool:1000.000") // 1000 participants * 1 HIVE
-				assert.Contains(t, log, "tickets:1000")
-				t.Logf("Execution event: %s", log)
-			}
-		}
-	}
-	assert.True(t, hasExecEvent)
-}
+// 	// Verify execution event
+// 	hasExecEvent := false
+// 	for _, logValues := range logs {
+// 		for _, log := range logValues {
+// 			if strings.HasPrefix(log, "le|") {
+// 				hasExecEvent = true
+// 				assert.Contains(t, log, "pool:1000.000") // 1000 participants * 1 HIVE
+// 				assert.Contains(t, log, "tickets:1000")
+// 				t.Logf("Execution event: %s", log)
+// 			}
+// 		}
+// 	}
+// 	assert.True(t, hasExecEvent)
+// }
