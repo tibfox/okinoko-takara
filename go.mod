@@ -215,6 +215,7 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace vsc-node => /home/tibfox/Coding/projects/vsc_contracts/go-vsc-node
+// disable module proxy for local testing
+// replace vsc-node => /home/tibfox/Coding/projects/vsc_contracts/go-vsc-node
 
 replace github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
