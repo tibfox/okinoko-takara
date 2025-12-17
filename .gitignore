@@ -1,0 +1,8 @@
+build/
+artifacts/
+test/artifacts/
+data/
+*.wasm
+.cache/
+.gocache/
+.vscode/
