@@ -47,24 +47,27 @@ func (ls LotteryState) String() string {
 
 // Lottery represents a lottery instance
 type Lottery struct {
-	ID           uint64
-	Creator      sdk.Address
-	Name         string
-	CreatedAt    int64
-	DeadlineDays uint64
-	DeadlineUnix int64
-	BurnPercent  float64
-	TicketPrice  Amount
-	Asset        sdk.Asset
-	WinnerShares []float64
-	Pool         Amount
-	Participants map[string]uint64 // address -> ticket count
-	State        LotteryState
-	Winners      []Winner
-	ExecutedAt   int64
-	RandomSeed   uint64
-	TotalTickets uint64
-	BurnedAmount Amount
+	ID              uint64
+	Creator         sdk.Address
+	Name            string
+	CreatedAt       int64
+	DeadlineDays    uint64
+	DeadlineUnix    int64
+	BurnPercent     float64
+	TicketPrice     Amount
+	Asset           sdk.Asset
+	WinnerShares    []float64
+	Pool            Amount
+	Participants    map[string]uint64 // address -> ticket count
+	State           LotteryState
+	Winners         []Winner
+	ExecutedAt      int64
+	RandomSeed      uint64
+	TotalTickets    uint64
+	BurnedAmount    Amount
+	DonationAccount sdk.Address
+	DonationPercent float64
+	DonatedAmount   Amount
 }
 
 // Winner represents a lottery winner
@@ -76,12 +79,14 @@ type Winner struct {
 
 // CreateLotteryArgs represents arguments for creating a lottery
 type CreateLotteryArgs struct {
-	Name         string
-	DeadlineDays uint64
-	BurnPercent  float64
-	WinnerShares []float64
-	TicketPrice  Amount
-	Asset        sdk.Asset
+	Name            string
+	DeadlineDays    uint64
+	BurnPercent     float64
+	WinnerShares    []float64
+	TicketPrice     Amount
+	Asset           sdk.Asset
+	DonationAccount sdk.Address
+	DonationPercent float64
 }
 
 // JoinLotteryArgs represents arguments for joining a lottery

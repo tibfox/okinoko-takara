@@ -7,12 +7,12 @@ import (
 )
 
 // parseCreateLottery parses the payload for create_lottery
-// Format: name|deadlineDays|burnPercent|winnerShare1,winnerShare2,...|ticketPrice
-// Example: "My Lottery|7|10|50,30,20|5.000"
+// Format: name|deadlineDays|burnPercent|winnerShare1,winnerShare2,...|ticketPrice[|donationAccount|donationPercent]
+// Example: "My Lottery|7|10|50,30,20|5.000" or "My Lottery|7|10|50,30,20|5.000|hive:charity|5"
 func parseCreateLottery(payload string) *CreateLotteryArgs {
 	parts := strings.Split(payload, "|")
-	if len(parts) != 5 {
-		sdk.Abort("invalid create_lottery payload format: expected 5 parts")
+	if len(parts) != 5 && len(parts) != 7 {
+		sdk.Abort("invalid create_lottery payload format: expected 5 or 7 parts")
 	}
 
 	name := strings.TrimSpace(parts[0])
@@ -79,13 +79,40 @@ func parseCreateLottery(payload string) *CreateLotteryArgs {
 		sdk.Abort("ticket price must be at least 0.001")
 	}
 
-	return &CreateLotteryArgs{
-		Name:         name,
-		DeadlineDays: deadlineDays,
-		BurnPercent:  burnPercent,
-		WinnerShares: winnerShares,
-		TicketPrice:  FloatToAmount(ticketPrice),
+	args := &CreateLotteryArgs{
+		Name:            name,
+		DeadlineDays:    deadlineDays,
+		BurnPercent:     burnPercent,
+		WinnerShares:    winnerShares,
+		TicketPrice:     FloatToAmount(ticketPrice),
+		DonationAccount: sdk.Address(""),
+		DonationPercent: 0.0,
 	}
+
+	// Parse optional donation parameters
+	if len(parts) == 7 {
+		donationAccount := strings.TrimSpace(parts[5])
+		if donationAccount == "" {
+			sdk.Abort("donation account cannot be empty if provided")
+		}
+		args.DonationAccount = sdk.Address(donationAccount)
+
+		donationPercent, err := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
+		if err != nil {
+			sdk.Abort("invalid donation percent")
+		}
+		if donationPercent < 0.0 || donationPercent > 50.0 {
+			sdk.Abort("donation percent must be between 0 and 50")
+		}
+		args.DonationPercent = donationPercent
+
+		// Validate total percentages don't exceed 100%
+		if burnPercent+donationPercent > 90.0 {
+			sdk.Abort("burn percent + donation percent must not exceed 90")
+		}
+	}
+
+	return args
 }
 
 // parseJoinLottery parses the payload for join_lottery

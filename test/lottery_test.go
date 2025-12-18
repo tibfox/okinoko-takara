@@ -983,6 +983,154 @@ func TestVerifyLotteryNotExecuted(t *testing.T) {
 	assert.Contains(t, result.Ret, "lottery not executed yet")
 }
 
+// TestLotteryWithDonation tests lottery with optional donation feature
+func TestLotteryWithDonation(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Create lottery with donation: 10% burn, 20% donation to hive:charity
+	// Format: name|days|burn%|shares|price|donationAccount|donationPercent
+	createResult, _, createLogs := CallContract(t, ct, "create_lottery", PayloadString("Charity Lottery|1|10|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
+	assert.True(t, createResult.Success)
+	assert.Contains(t, createResult.Ret, "lottery created with ID: 1")
+
+	// Verify donation info is in the creation event
+	foundDonationInfo := false
+	for _, logValues := range createLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lc|") && strings.Contains(log, "donation_account:hive:charity") && strings.Contains(log, "donation_percent:20.00") {
+				foundDonationInfo = true
+				break
+			}
+		}
+	}
+	assert.True(t, foundDonationInfo, "Donation info should be in creation event")
+
+	// Add participants - 4 participants, each buying 1 ticket (5 HIVE)
+	participants := []string{"hive:alice", "hive:bob", "hive:charlie", "hive:dave"}
+	for _, participant := range participants {
+		ct.Deposit(participant, 10_000_000, ledgerDb.AssetHive) // 10 HIVE each
+		joinResult, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), participant, true, uint(700_000_000))
+		assert.True(t, joinResult.Success)
+	}
+
+	// Total pool: 20 HIVE
+	// Expected burn: 2 HIVE (10%)
+	// Expected donation: 4 HIVE (20%)
+	// Expected prize pool: 14 HIVE (70%)
+
+	// Execute lottery
+	futureTimestamp := "2025-09-05T00:00:00"
+	execResult, _, execLogs := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:executor", true, uint(700_000_000), futureTimestamp)
+	assert.True(t, execResult.Success)
+
+	// Verify donation event was emitted
+	foundDonationEvent := false
+	for _, logValues := range execLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "ld|") {
+				// Format: ld|id:<id>|recipient:<address>|amount:<amount>|percent:<percent>|asset:<asset>
+				assert.Contains(t, log, "id:1")
+				assert.Contains(t, log, "recipient:hive:charity")
+				assert.Contains(t, log, "amount:4.000")
+				assert.Contains(t, log, "percent:20.00")
+				foundDonationEvent = true
+				break
+			}
+		}
+	}
+	assert.True(t, foundDonationEvent, "Donation event should be emitted")
+
+	// Note: We cannot check balances of hive:null or hive:charity because sdk.HiveWithdraw
+	// sends funds to Layer 1 (out of the contract), not to Layer 2 accounts.
+	// We can only verify the contract balance decreased correctly.
+
+	// Get winner to check their balance increased
+	var winnerAddress string
+	for _, logValues := range execLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lp|") {
+				parts := strings.Split(log, "|")
+				for _, part := range parts {
+					if strings.HasPrefix(part, "winner:") {
+						winnerAddress = strings.TrimPrefix(part, "winner:")
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Winner should have received 14 HIVE (70% of 20 HIVE pool)
+	// The remaining 6 HIVE went to burn (2) and donation (4) via sdk.HiveWithdraw
+	t.Logf("Winner: %s should have received 14 HIVE", winnerAddress)
+	t.Logf("Donation: 4 HIVE sent to hive:charity via sdk.HiveWithdraw")
+	t.Logf("Burn: 2 HIVE sent to hive:null via sdk.HiveWithdraw")
+}
+
+// TestLotteryWithoutDonation tests lottery without donation (backwards compatibility)
+func TestLotteryWithoutDonation(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Create lottery without donation (old format - 5 parts)
+	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Regular Lottery|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	assert.True(t, createResult.Success)
+	assert.Contains(t, createResult.Ret, "lottery created with ID: 1")
+
+	// Add participants
+	participants := []string{"hive:alice", "hive:bob"}
+	for _, participant := range participants {
+		ct.Deposit(participant, 10_000_000, ledgerDb.AssetHive)
+		joinResult, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), participant, true, uint(700_000_000))
+		assert.True(t, joinResult.Success)
+	}
+
+	// Execute lottery
+	futureTimestamp := "2025-09-05T00:00:00"
+	execResult, _, execLogs := CallContractAt(t, ct, "execute_lottery", PayloadString("1"), nil, "hive:executor", true, uint(700_000_000), futureTimestamp)
+	assert.True(t, execResult.Success)
+
+	// Verify NO donation event was emitted
+	foundDonationEvent := false
+	for _, logValues := range execLogs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "ld|") {
+				foundDonationEvent = true
+				break
+			}
+		}
+	}
+	assert.False(t, foundDonationEvent, "No donation event should be emitted for lottery without donation")
+}
+
+// TestLotteryDonationValidation tests donation parameter validation
+func TestLotteryDonationValidation(t *testing.T) {
+	ct := SetupContractTest()
+
+	// Test: donation percent too high (>50%)
+	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Too High|1|10|100|5.000|hive:charity|51"), nil, "hive:creator", false, uint(700_000_000))
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "donation percent must be between 0 and 50")
+
+	// Test: donation percent negative
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Negative|1|10|100|5.000|hive:charity|-5"), nil, "hive:creator", false, uint(700_000_000))
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "donation percent must be between 0 and 50")
+
+	// Test: burn + donation exceeds 90%
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Too Much|1|75|100|5.000|hive:charity|20"), nil, "hive:creator", false, uint(700_000_000))
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "burn percent + donation percent must not exceed 90")
+
+	// Test: empty donation account
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Empty Account|1|10|100|5.000||10"), nil, "hive:creator", false, uint(700_000_000))
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "donation account cannot be empty if provided")
+
+	// Test: valid donation at maximum limits (burn 70% + donation 20% = 90%)
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Max Valid|1|70|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
+	assert.True(t, result.Success)
+}
+
 // TestLargeScaleLottery tests lottery with 1000 participants
 // uncommented as it takes a lot of time...
 // func TestLargeScaleLottery(t *testing.T) {

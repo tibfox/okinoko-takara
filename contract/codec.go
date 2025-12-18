@@ -8,21 +8,24 @@ import (
 
 // LotteryMetadata contains the static/rarely-changing lottery data
 type LotteryMetadata struct {
-	ID           uint64
-	Creator      sdk.Address
-	Name         string
-	CreatedAt    int64
-	DeadlineDays uint64
-	DeadlineUnix int64
-	BurnPercent  float64
-	TicketPrice  Amount
-	Asset        sdk.Asset
-	WinnerShares []float64
-	State        LotteryState
-	Winners      []Winner
-	ExecutedAt   int64
-	RandomSeed   uint64
-	BurnedAmount Amount
+	ID              uint64
+	Creator         sdk.Address
+	Name            string
+	CreatedAt       int64
+	DeadlineDays    uint64
+	DeadlineUnix    int64
+	BurnPercent     float64
+	TicketPrice     Amount
+	Asset           sdk.Asset
+	WinnerShares    []float64
+	State           LotteryState
+	Winners         []Winner
+	ExecutedAt      int64
+	RandomSeed      uint64
+	BurnedAmount    Amount
+	DonationAccount sdk.Address
+	DonationPercent float64
+	DonatedAmount   Amount
 }
 
 // LotteryPoolStats contains pool and ticket totals (frequently updated)
@@ -71,6 +74,11 @@ func encodeLotteryMetadata(m *LotteryMetadata) string {
 	buf = appendInt64(buf, m.ExecutedAt)
 	buf = appendUint64(buf, m.RandomSeed)
 	buf = appendInt64(buf, int64(m.BurnedAmount))
+
+	// Donation fields
+	buf = appendString(buf, m.DonationAccount.String())
+	buf = appendFloat64(buf, m.DonationPercent)
+	buf = appendInt64(buf, int64(m.DonatedAmount))
 
 	return string(buf)
 }
@@ -134,6 +142,15 @@ func decodeLotteryMetadata(data string) *LotteryMetadata {
 	m.RandomSeed, offset = readUint64(buf, offset)
 	burnedAmount, off := readInt64(buf, offset)
 	m.BurnedAmount = Amount(burnedAmount)
+	offset = off
+
+	// Donation fields
+	donationAccountStr, off := readString(buf, offset)
+	m.DonationAccount = AddressFromString(donationAccountStr)
+	offset = off
+	m.DonationPercent, offset = readFloat64(buf, offset)
+	donatedAmount, off := readInt64(buf, offset)
+	m.DonatedAmount = Amount(donatedAmount)
 
 	return m
 }

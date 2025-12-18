@@ -16,21 +16,24 @@ func create_lottery(payload *string) *string {
 
 	// Create new lottery
 	lottery := &Lottery{
-		ID:           getNextLotteryID(),
-		Creator:      sender,
-		Name:         args.Name,
-		CreatedAt:    now,
-		DeadlineDays: args.DeadlineDays,
-		DeadlineUnix: now + int64(args.DeadlineDays*24*60*60),
-		BurnPercent:  args.BurnPercent,
-		TicketPrice:  args.TicketPrice,
-		Asset:        sdk.AssetHive, // Default to HIVE, could be parameterized
-		WinnerShares: args.WinnerShares,
-		Pool:         0,
-		Participants: make(map[string]uint64),
-		State:        LotteryStateActive,
-		Winners:      []Winner{},
-		TotalTickets: 0,
+		ID:              getNextLotteryID(),
+		Creator:         sender,
+		Name:            args.Name,
+		CreatedAt:       now,
+		DeadlineDays:    args.DeadlineDays,
+		DeadlineUnix:    now + int64(args.DeadlineDays*24*60*60),
+		BurnPercent:     args.BurnPercent,
+		TicketPrice:     args.TicketPrice,
+		Asset:           sdk.AssetHive, // Default to HIVE, could be parameterized
+		WinnerShares:    args.WinnerShares,
+		Pool:            0,
+		Participants:    make(map[string]uint64),
+		State:           LotteryStateActive,
+		Winners:         []Winner{},
+		TotalTickets:    0,
+		DonationAccount: args.DonationAccount,
+		DonationPercent: args.DonationPercent,
+		DonatedAmount:   0,
 	}
 
 	// Save lottery
@@ -95,6 +98,10 @@ func join_lottery(payload *string) *string {
 	// Load pool stats
 	stats := loadLotteryPoolStats(args.LotteryID)
 
+	// Calculate ticket range for this purchase
+	ticketStart := stats.TotalTickets
+	ticketEnd := stats.TotalTickets + ticketCount - 1
+
 	// Check if participant already exists
 	participantIndex := loadParticipantIndex(args.LotteryID, senderStr)
 
@@ -126,8 +133,8 @@ func join_lottery(payload *string) *string {
 	stats.TotalTickets += ticketCount
 	saveLotteryPoolStats(args.LotteryID, stats)
 
-	// Emit event
-	emitLotteryJoined(args.LotteryID, sender, ticketCount, actualCost, meta.Asset)
+	// Emit event with ticket range
+	emitLotteryJoined(args.LotteryID, sender, ticketCount, actualCost, meta.Asset, ticketStart, ticketEnd)
 
 	ret := "joined lottery with " + strconv.FormatUint(ticketCount, 10) + " ticket(s)"
 	return &ret
@@ -174,8 +181,21 @@ func execute_lottery(payload *string) *string {
 		sdk.HiveWithdraw(nullReceiver, AmountToInt64(burnAmount), lottery.Asset)
 	}
 
-	// Calculate remaining pool for distribution
-	remainingPool := lottery.Pool - burnAmount
+	// Calculate and process donation if configured
+	donationAmount := Amount(0)
+	if lottery.DonationPercent > 0.0 && lottery.DonationAccount.String() != "" {
+		donationAmount = Amount(float64(lottery.Pool) * lottery.DonationPercent / 100.0)
+		lottery.DonatedAmount = donationAmount
+
+		if donationAmount > 0 {
+			sdk.HiveWithdraw(lottery.DonationAccount, AmountToInt64(donationAmount), lottery.Asset)
+			// Emit donation event
+			emitLotteryDonation(lottery.ID, lottery.DonationAccount, donationAmount, lottery.DonationPercent, lottery.Asset)
+		}
+	}
+
+	// Calculate remaining pool for distribution (after burn and donation)
+	remainingPool := lottery.Pool - burnAmount - donationAmount
 
 	// Select winners
 	winnerCount := len(lottery.WinnerShares)
@@ -215,6 +235,8 @@ func execute_lottery(payload *string) *string {
 		sdk.HiveWithdraw(nullReceiver, AmountToInt64(undistributed), lottery.Asset)
 		// Update total burned amount to include undistributed funds
 		lottery.BurnedAmount += undistributed
+		// Emit undistributed event
+		emitLotteryUndistributed(lottery.ID, undistributed, lottery.Asset)
 	}
 
 	// Update lottery state
@@ -224,8 +246,11 @@ func execute_lottery(payload *string) *string {
 	// Save lottery
 	saveLottery(lottery)
 
+	// Get participant count for event
+	participantCount := uint64(len(lottery.Participants))
+
 	// Emit execution event
-	emitLotteryExecuted(lottery)
+	emitLotteryExecuted(lottery, participantCount)
 
 	ret := "lottery executed with " + strconv.FormatUint(uint64(len(lottery.Winners)), 10) + " winner(s)"
 	return &ret

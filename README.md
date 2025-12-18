@@ -30,6 +30,7 @@ As a lottery creator, you define:
 3. **Ticket Price** – Choose the price per ticket in HIVE (min. 0.001 HIVE)
 4. **Burn Rate** – Percentage of the pool to burn (5-75%)
 5. **Prize Distribution** – Define how prizes are split among winners
+6. **Donation (Optional)** – Optionally dedicate a percentage to a charity or cause (0-50%)
 
 **Example:**
 - Name: "Happy New Year"
@@ -37,6 +38,7 @@ As a lottery creator, you define:
 - Ticket Price: 1 HIVE
 - Burn Rate: 30%
 - Prize Distribution: 1st place gets 100%
+- Donation: 5% to hive:charity (optional)
 
 ### Joining a Lottery
 
@@ -53,9 +55,10 @@ You can join the same lottery multiple times to increase your odds or simply buy
 When the lottery deadline passes, anyone can execute the lottery:
 
 1. A portion of the prize pool is burned (sent to `hive:null`)
-2. Winners are selected randomly based on ticket weight
-3. Prizes are automatically distributed to winners on the Magi Network
-4. If there are fewer participants than winner positions, unclaimed prizes are also burned
+2. If configured, a donation is sent to the specified account
+3. Winners are selected randomly based on ticket weight
+4. Prizes are automatically distributed to winners on the Magi Network
+5. If there are fewer participants than winner positions, unclaimed prizes are also burned
 
 **Important:** The more tickets you have, the higher your chance of winning!
 
@@ -81,6 +84,12 @@ When the lottery deadline passes, anyone can execute the lottery:
 
 ### Ticket Pricing
 - Any positive amount in HIVE (e.g., 1.000, 5.000, 10.000)
+
+### Donation (Optional)
+- Minimum: 0% (no donation)
+- Maximum: 50%
+- The donation account must be a valid Hive address
+- Combined burn rate + donation rate cannot exceed 90%
 
 ---
 
@@ -131,6 +140,30 @@ When the lottery deadline passes, anyone can execute the lottery:
 
 ---
 
+### Charity Lottery with Donation
+
+**Setup:**
+- Name: "Help the Ocean"
+- Duration: 14 days
+- Ticket Price: 2 HIVE
+- Burn Rate: 10%
+- Donation: 20% to hive:oceanDAO
+- Winners: 2 (60%, 40%)
+
+**Participants:**
+- 10 people buy tickets totaling 50 HIVE
+
+**After Execution:**
+- Burned: 5 HIVE (10%)
+- Donated: 10 HIVE (20%) → sent to hive:oceanDAO
+- Prize Pool: 35 HIVE
+- 1st Place: 21 HIVE (60%)
+- 2nd Place: 14 HIVE (40%)
+
+This allows lottery creators to support charitable causes while still offering attractive prizes to participants!
+
+---
+
 ## Unclaimed Prizes
 
 If there are fewer participants than winner positions, the unclaimed prize shares are automatically burned to `hive:null`.
@@ -147,14 +180,163 @@ If there are fewer participants than winner positions, the unclaimed prize share
 
 ## Events & Transparency
 
-All lottery activities can be recorded by off-chain indexers.
+All lottery activities emit events that can be indexed by off-chain systems. Each event contains complete information needed for indexing, verification, and analytics.
 
-- **Lottery Created** – When a new lottery is created
-- **Participant Joined** – Every time someone buys tickets
-- **Lottery Executed** – When winners are selected and prizes distributed
-- **Prize Payout** – Individual payout records for each winner
+### Event Types
 
-These events can be tracked and verified by anyone.
+#### 1. Lottery Created (`lc`)
+Emitted when a new lottery is created.
+
+**Format:**
+```
+lc|id:<id>|creator:<address>|name:<name>|created_at:<unix_timestamp>|deadline:<unix_timestamp>|burn:<percent>|ticket:<price>|asset:<asset>|winners:<count>|shares:<csv>|donation_account:<account>|donation_percent:<percent>
+```
+
+**Fields:**
+- `id` – Unique lottery ID
+- `creator` – Address of lottery creator
+- `name` – Lottery name
+- `created_at` – Creation timestamp (Unix)
+- `deadline` – Deadline timestamp (Unix)
+- `burn` – Burn percentage (e.g., 10.00)
+- `ticket` – Ticket price (e.g., 5.000)
+- `asset` – Asset type (e.g., HIVE)
+- `winners` – Number of winner positions
+- `shares` – Prize distribution CSV (e.g., "50.00,30.00,20.00")
+- `donation_account` – (Optional) Donation recipient address
+- `donation_percent` – (Optional) Donation percentage
+
+**Example:**
+```
+lc|id:1|creator:hive:alice|name:Weekly Draw|created_at:1703001600|deadline:1703606400|burn:10.00|ticket:5.000|asset:HIVE|winners:3|shares:50.00,30.00,20.00
+```
+
+#### 2. Lottery Joined (`lj`)
+Emitted every time someone buys tickets.
+
+**Format:**
+```
+lj|id:<id>|participant:<address>|tickets:<count>|paid:<amount>|asset:<asset>|ticket_start:<start>|ticket_end:<end>
+```
+
+**Fields:**
+- `id` – Lottery ID
+- `participant` – Buyer's address
+- `tickets` – Number of tickets purchased
+- `paid` – Total amount paid (e.g., 15.000)
+- `asset` – Asset type
+- `ticket_start` – First ticket number in range (0-indexed)
+- `ticket_end` – Last ticket number in range (inclusive)
+
+**Example:**
+```
+lj|id:1|participant:hive:bob|tickets:3|paid:15.000|asset:HIVE|ticket_start:0|ticket_end:2
+lj|id:1|participant:hive:bob|tickets:2|paid:10.000|asset:HIVE|ticket_start:3|ticket_end:4
+```
+
+**Note:** The ticket range allows indexers to track exactly which ticket numbers belong to each participant.
+
+#### 3. Lottery Executed (`le`)
+Emitted when a lottery is executed and winners are selected.
+
+**Format:**
+```
+le|id:<id>|pool:<amount>|burned:<amount>|donated:<amount>|asset:<asset>|winners:<count>|seed:<seed>|tickets:<total>|participants:<count>|executed_at:<unix_timestamp>
+```
+
+**Fields:**
+- `id` – Lottery ID
+- `pool` – Total pool before distribution
+- `burned` – Total amount burned (includes undistributed funds)
+- `donated` – Amount donated to charity (0 if none)
+- `asset` – Asset type
+- `winners` – Number of actual winners
+- `seed` – Random seed used for selection
+- `tickets` – Total tickets sold
+- `participants` – Number of unique participants
+- `executed_at` – Execution timestamp (Unix)
+
+**Example:**
+```
+le|id:1|pool:100.000|burned:15.500|donated:0.000|asset:HIVE|winners:3|seed:12345678901234567890|tickets:20|participants:5|executed_at:1703606500
+```
+
+#### 4. Lottery Payout (`lp`)
+Emitted for each winner when prizes are distributed.
+
+**Format:**
+```
+lp|id:<id>|winner:<address>|amount:<amount>|share:<percent>|asset:<asset>|position:<n>
+```
+
+**Fields:**
+- `id` – Lottery ID
+- `winner` – Winner's address
+- `amount` – Prize amount (e.g., 42.250)
+- `share` – Prize share percentage (e.g., 50.00)
+- `asset` – Asset type
+- `position` – Winner position (1st, 2nd, 3rd, etc.)
+
+**Example:**
+```
+lp|id:1|winner:hive:charlie|amount:42.250|share:50.00|asset:HIVE|position:1
+lp|id:1|winner:hive:alice|amount:25.350|share:30.00|asset:HIVE|position:2
+lp|id:1|winner:hive:bob|amount:16.900|share:20.00|asset:HIVE|position:3
+```
+
+#### 5. Lottery Donation (`ld`)
+Emitted when a donation is sent to the configured charity/cause.
+
+**Format:**
+```
+ld|id:<id>|recipient:<address>|amount:<amount>|percent:<percent>|asset:<asset>
+```
+
+**Fields:**
+- `id` – Lottery ID
+- `recipient` – Donation recipient address
+- `amount` – Donation amount
+- `percent` – Donation percentage
+- `asset` – Asset type
+
+**Example:**
+```
+ld|id:1|recipient:hive:oceanDAO|amount:10.000|percent:10.00|asset:HIVE
+```
+
+#### 6. Lottery Undistributed (`lu`)
+Emitted when undistributed funds (from rounding or unclaimed shares) are burned.
+
+**Format:**
+```
+lu|id:<id>|amount:<amount>|asset:<asset>
+```
+
+**Fields:**
+- `id` – Lottery ID
+- `amount` – Amount of undistributed funds burned
+- `asset` – Asset type
+
+**Example:**
+```
+lu|id:1|amount:0.500|asset:HIVE
+```
+
+**Note:** This ensures complete accounting transparency. The total burned = configured burn + undistributed funds.
+
+### For Indexer Developers
+
+These events provide **complete information** to:
+- ✅ Track exact ticket ownership and ranges per participant
+- ✅ Verify lottery fairness independently using the seed
+- ✅ Provide full accounting (every token accounted for)
+- ✅ Reconstruct complete lottery history
+- ✅ Display user's specific ticket numbers
+- ✅ Track all timestamps and state changes
+- ✅ Monitor donation flows
+- ✅ Account for rounding errors and undistributed funds
+
+All events can be tracked, indexed, and verified by anyone monitoring the blockchain.
 
 ---
 
@@ -174,11 +356,11 @@ This makes the lottery:
 
 ### Verifying Results
 
-After a lottery is executed, anyone can independently verify that the winners were selected fairly. There are two ways to verify:
+After a lottery is executed, anyone can independently verify that the winners were selected fairly. 
 
-#### Method 1: Using the verify_lottery Contract Function (Recommended)
+#### Using the verify_lottery Contract Function
 
-The simplest way to verify is using the built-in `verify_lottery` contract function:
+The built-in way to verify is using the `verify_lottery` contract function:
 
 ```javascript
 // Call the verify_lottery contract function
@@ -195,42 +377,6 @@ To verify a lottery:
 2. Call `verify_lottery` with the lottery ID and seed
 3. The contract re-runs the selection algorithm and compares results
 4. Returns success or failure with the winner list
-
-**Key benefits:**
-- ✅ No need to implement the algorithm yourself
-- ✅ Works directly on-chain with a single contract call
-- ✅ Anyone can verify without downloading any data
-
-#### Method 2: Off-Chain Verification
-
-For advanced users who want to verify independently without calling the contract:
-
-```go
-// 1. Load executed lottery data from chain
-lottery := getLotteryFromChain(lotteryID)
-
-// 2. Verify the lottery was executed
-if lottery.State != Executed {
-    return error("lottery not executed")
-}
-
-// 3. Re-run winner selection with the stored seed
-verifiedWinners := selectRandomWinners(
-    lottery.Participants,  // Participant addresses and ticket counts
-    lottery.TotalTickets,  // Total number of tickets
-    len(lottery.Winners),  // Number of winners
-    lottery.RandomSeed,    // Seed used during execution
-)
-
-// 4. Compare results
-for i, winner := range lottery.Winners {
-    if winner.Address != verifiedWinners[i] {
-        return error("winner mismatch - lottery may be compromised!")
-    }
-}
-
-// Results match - lottery was provably fair!
-```
 
 Because the random seed is stored on-chain and the selection algorithm is deterministic, verification always produces the same results. This makes cheating impossible without detection.
 
@@ -256,23 +402,16 @@ The easiest way to use Ōkinoko Takara is through the **[Okinoko.io](https://oki
 
 ---
 
-## Support
-
-For questions or support, visit:
-- **Website:** [Okinoko.io](https://okinoko.io)
-- **Magi Network:** [magi.eco](https://magi.eco/)
-
----
-
 ## Contract Parameters Quick Reference
 
 | Action | Format | Example |
 |--------|--------|---------|
-| Create Lottery | `name\|days\|burn%\|shares\|price` | `Weekly Draw\|7\|10\|100\|5.000` |
+| Create Lottery | `name\|days\|burn%\|shares\|price[\|donationAccount\|donationPercent]` | `Weekly Draw\|7\|10\|100\|5.000` or `Charity Draw\|7\|10\|100\|5.000\|hive:charity\|10` |
 | Join Lottery | `lotteryID` | `1` |
 | Execute Lottery | `lotteryID` | `1` |
 | Verify Lottery | `lotteryID\|seed` | `1\|12345678901234567890` |
 
 **Notes:**
+- When creating a lottery, the donation parameters are optional. If omitted, no donation is configured.
 - When joining, you must also provide a `transfer.allow` intent with the amount of HIVE you want to spend on tickets.
 - When verifying, use the seed from the lottery execution event to independently verify the results.
