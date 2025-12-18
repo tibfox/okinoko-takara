@@ -216,6 +216,6 @@ require (
 )
 
 // disable module proxy for local testing
-replace vsc-node => /home/tibfox/Coding/projects/vsc_contracts/go-vsc-node
+replace vsc-node => github.com/vsc-eco/go-vsc-node v0.0.0-20251211110824-6e37dfea3abf
 
 replace github.com/agl/ed25519 => github.com/binance-chain/edwards25519 v0.0.0-20200305024217-f36fc4b53d43
