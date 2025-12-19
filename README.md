@@ -26,15 +26,17 @@ Each lottery benefits the HIVE price by burning a portion of the ticket prices.
 As a lottery creator, you define:
 
 1. **Lottery Name** – Give your lottery a memorable name (1 - 100 characters)
-2. **Duration** – Set how many days until the lottery closes (1-90 days)
+2. **Duration** – Set how many hours until the lottery closes (1-2160 hours)
 3. **Ticket Price** – Choose the price per ticket in HIVE (min. 0.001 HIVE)
 4. **Burn Rate** – Percentage of the pool to burn (5-75%)
 5. **Prize Distribution** – Define how prizes are split among winners
 6. **Donation (Optional)** – Optionally dedicate a percentage to a charity or cause (0-50%)
+7. **Metadata (Optional)** – Store a free-form string (max 500 chars)
+8. **Max Tickets (Optional)** – Cap total tickets that can be sold
 
 **Example:**
 - Name: "Happy New Year"
-- Duration: 7 days
+- Duration: 168 hours
 - Ticket Price: 1 HIVE
 - Burn Rate: 30%
 - Prize Distribution: 1st place gets 100%
@@ -67,8 +69,8 @@ When the lottery deadline passes, anyone can execute the lottery:
 ## Lottery Parameters
 
 ### Duration
-- Minimum: 1 day
-- Maximum: 90 days
+- Minimum: 1 hour
+- Maximum: 2160 hours
 
 ### Burn Rate
 - Minimum: 5%
@@ -91,6 +93,13 @@ When the lottery deadline passes, anyone can execute the lottery:
 - The donation account must be a valid Hive address
 - Combined burn rate + donation rate cannot exceed 90%
 
+### Metadata (Optional)
+- Stored as a raw string (max 500 characters)
+- Contents are not validated or parsed
+
+### Max Tickets (Optional)
+- If provided, total tickets sold cannot exceed the limit
+
 ---
 
 ## Example Scenarios
@@ -99,7 +108,7 @@ When the lottery deadline passes, anyone can execute the lottery:
 
 **Setup:**
 - Name: "Big Jackpot"
-- Duration: 7 days
+- Duration: 168 hours
 - Ticket Price: 5 HIVE
 - Burn Rate: 10%
 - Winners: 1 (gets 100%)
@@ -123,7 +132,7 @@ When the lottery deadline passes, anyone can execute the lottery:
 
 **Setup:**
 - Name: "Triple Threat"
-- Duration: 3 days
+- Duration: 72 hours
 - Ticket Price: 10 HIVE
 - Burn Rate: 15%
 - Winners: 3 (50%, 30%, 20%)
@@ -144,7 +153,7 @@ When the lottery deadline passes, anyone can execute the lottery:
 
 **Setup:**
 - Name: "Help the Ocean"
-- Duration: 14 days
+- Duration: 336 hours
 - Ticket Price: 2 HIVE
 - Burn Rate: 10%
 - Donation: 20% to hive:oceanDAO
@@ -211,7 +220,24 @@ lc|id:<id>|creator:<address>|name:<name>|created_at:<unix_timestamp>|deadline:<u
 lc|id:1|creator:hive:alice|name:Weekly Draw|created_at:1703001600|deadline:1703606400|burn:10.00|ticket:5.000|asset:HIVE|winners:3|shares:50.00,30.00,20.00
 ```
 
-#### 2. Lottery Joined (`lj`)
+#### 2. Lottery Metadata Changed (`lm`)
+Emitted when metadata is set or updated.
+
+**Format:**
+```
+lm|id:<id>|metadata:<metadata>
+```
+
+**Fields:**
+- `id` – Unique lottery ID
+- `metadata` – Free-form metadata string
+
+**Example:**
+```
+lm|id:1|metadata:ipfs://example
+```
+
+#### 3. Lottery Joined (`lj`)
 Emitted every time someone buys tickets.
 
 **Format:**
@@ -236,7 +262,7 @@ lj|id:1|participant:hive:bob|tickets:2|paid:10.000|asset:HIVE|ticket_start:3|tic
 
 **Note:** The ticket range allows indexers to track exactly which ticket numbers belong to each participant.
 
-#### 3. Lottery Executed (`le`)
+#### 4. Lottery Executed (`le`)
 Emitted when a lottery is executed and winners are selected.
 
 **Format:**
@@ -261,7 +287,7 @@ le|id:<id>|pool:<amount>|burned:<amount>|donated:<amount>|asset:<asset>|winners:
 le|id:1|pool:100.000|burned:15.500|donated:0.000|asset:HIVE|winners:3|seed:12345678901234567890|tickets:20|participants:5|executed_at:1703606500
 ```
 
-#### 4. Lottery Payout (`lp`)
+#### 5. Lottery Payout (`lp`)
 Emitted for each winner when prizes are distributed.
 
 **Format:**
@@ -284,7 +310,7 @@ lp|id:1|winner:hive:alice|amount:25.350|share:30.00|asset:HIVE|position:2
 lp|id:1|winner:hive:bob|amount:16.900|share:20.00|asset:HIVE|position:3
 ```
 
-#### 5. Lottery Donation (`ld`)
+#### 6. Lottery Donation (`ld`)
 Emitted when a donation is sent to the configured charity/cause.
 
 **Format:**
@@ -304,7 +330,7 @@ ld|id:<id>|recipient:<address>|amount:<amount>|percent:<percent>|asset:<asset>
 ld|id:1|recipient:hive:oceanDAO|amount:10.000|percent:10.00|asset:HIVE
 ```
 
-#### 6. Lottery Undistributed (`lu`)
+#### 7. Lottery Undistributed (`lu`)
 Emitted when undistributed funds (from rounding or unclaimed shares) are burned.
 
 **Format:**
@@ -404,12 +430,13 @@ The easiest way to use Ōkinoko Takara is through the **[Okinoko.io](https://oki
 
 ## Contract Parameters Quick Reference
 
-| Action | Format | Example |
-|--------|--------|---------|
-| Create Lottery | `name\|days\|burn%\|shares\|price[\|donationAccount\|donationPercent]` | `Weekly Draw\|7\|10\|100\|5.000` or `Charity Draw\|7\|10\|100\|5.000\|hive:charity\|10` |
-| Join Lottery | `lotteryID` | `1` |
-| Execute Lottery | `lotteryID` | `1` |
-| Verify Lottery | `lotteryID\|seed` | `1\|12345678901234567890` |
+| Action | Function | Format | Example |
+|-|-|-|-|
+| Create Lottery | `create_lottery` |`name\|hours\|burn%\|shares\|price\|donationAccount\|donationPercent\|metaData\|max_tickets=<count>` | `Weekly Draw\|168\|10\|100\|5.000` or `Charity Draw\|168\|10\|100\|5.000\|hive:charity\|10\|meta\|max_tickets=1000` |
+| Change Metadata | `change_lottery_metadata` | `lotteryID\|metaData` | `1\|ipfs://example` |
+| Join Lottery | `join_lottery`| `lotteryID` | `1` |
+| Execute Lottery | `execute_lottery`| `lotteryID` | `1` |
+| Verify Lottery | `verify_lottery`| `lotteryID\|seed` | `1\|12345678901234567890` |
 
 **Notes:**
 - When creating a lottery, the donation parameters are optional. If omitted, no donation is configured.

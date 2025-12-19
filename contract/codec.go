@@ -12,8 +12,9 @@ type LotteryMetadata struct {
 	Creator         sdk.Address
 	Name            string
 	CreatedAt       int64
-	DeadlineDays    uint64
+	DeadlineHours   uint64
 	DeadlineUnix    int64
+	MaxTickets      uint64
 	BurnPercent     float64
 	TicketPrice     Amount
 	Asset           sdk.Asset
@@ -49,8 +50,9 @@ func encodeLotteryMetadata(m *LotteryMetadata) string {
 	buf = appendString(buf, m.Creator.String())
 	buf = appendString(buf, m.Name)
 	buf = appendInt64(buf, m.CreatedAt)
-	buf = appendUint64(buf, m.DeadlineDays)
+	buf = appendUint64(buf, m.DeadlineHours)
 	buf = appendInt64(buf, m.DeadlineUnix)
+	buf = appendUint64(buf, m.MaxTickets)
 	buf = appendFloat64(buf, m.BurnPercent)
 	buf = appendInt64(buf, int64(m.TicketPrice))
 	buf = appendString(buf, m.Asset.String())
@@ -96,8 +98,9 @@ func decodeLotteryMetadata(data string) *LotteryMetadata {
 	offset = off
 	m.Name, offset = readString(buf, offset)
 	m.CreatedAt, offset = readInt64(buf, offset)
-	m.DeadlineDays, offset = readUint64(buf, offset)
+	m.DeadlineHours, offset = readUint64(buf, offset)
 	m.DeadlineUnix, offset = readInt64(buf, offset)
+	m.MaxTickets, offset = readUint64(buf, offset)
 	m.BurnPercent, offset = readFloat64(buf, offset)
 	ticketPrice, off := readInt64(buf, offset)
 	m.TicketPrice = Amount(ticketPrice)

@@ -18,8 +18,8 @@ import (
 func TestCreateLotteryBasic(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Create lottery: name|deadlineDays|burnPercent|winnerShares|ticketPrice
-	payload := "Test Lottery|7|10|50,30,20|5.000"
+	// Create lottery: name|deadlineHours|burnPercent|winnerShares|ticketPrice
+	payload := "Test Lottery|168|10|50,30,20|5.000"
 	result, _, logs := CallContract(
 		t, ct,
 		"create_lottery",
@@ -53,7 +53,7 @@ func TestCreateLotteryBasic(t *testing.T) {
 func TestCreateLotterySingleWinner(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Winner Takes All|3|5|100|1.000"
+	payload := "Winner Takes All|72|5|100|1.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -67,11 +67,41 @@ func TestCreateLotterySingleWinner(t *testing.T) {
 	assert.True(t, result.Success)
 }
 
+// TestCreateLotteryWithMetadata tests metadata can be set at creation time
+func TestCreateLotteryWithMetadata(t *testing.T) {
+	ct := SetupContractTest()
+
+	payload := "Meta Create|168|10|100|1.000|metadata from create"
+	result, _, logs := CallContract(
+		t, ct,
+		"create_lottery",
+		PayloadString(payload),
+		nil,
+		"hive:creator",
+		true,
+		uint(700_000_000),
+	)
+
+	assert.True(t, result.Success)
+	assert.Equal(t, "metadata from create", ct.StateGet(ContractID, "lmd:1"))
+
+	hasEvent := false
+	for _, logValues := range logs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lm|") && strings.Contains(log, "id:1") {
+				hasEvent = true
+				assert.Contains(t, log, "metadata from create")
+			}
+		}
+	}
+	assert.True(t, hasEvent, "Expected metadata changed event on create")
+}
+
 // TestCreateLotteryMinBurnPercent tests minimum burn percent (5%)
 func TestCreateLotteryMinBurnPercent(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Min Burn|1|5|100|1.000"
+	payload := "Min Burn|24|5|100|1.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -89,7 +119,7 @@ func TestCreateLotteryMinBurnPercent(t *testing.T) {
 func TestCreateLotteryMultipleWinners(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Big Lottery|10|15|25,20,15,15,10,10,5|10.000"
+	payload := "Big Lottery|240|15|25,20,15,15,10,10,5|10.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -103,6 +133,25 @@ func TestCreateLotteryMultipleWinners(t *testing.T) {
 	assert.True(t, result.Success)
 }
 
+// TestCreateLotteryMaxTicketsInvalid tests max tickets must be greater than 0 if provided
+func TestCreateLotteryMaxTicketsInvalid(t *testing.T) {
+	ct := SetupContractTest()
+
+	payload := "Max Tickets|168|10|100|1.000|max_tickets=0"
+	result, _, _ := CallContract(
+		t, ct,
+		"create_lottery",
+		PayloadString(payload),
+		nil,
+		"hive:creator",
+		false,
+		uint(700_000_000),
+	)
+
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "max tickets must be greater than 0")
+}
+
 // ============================================================================
 // NEGATIVE TESTS - Create Lottery
 // ============================================================================
@@ -111,7 +160,7 @@ func TestCreateLotteryMultipleWinners(t *testing.T) {
 func TestCreateLotteryNoName(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "|7|10|100|5.000"
+	payload := "|168|10|100|5.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -130,7 +179,7 @@ func TestCreateLotteryNoName(t *testing.T) {
 func TestCreateLotteryInvalidDeadline(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Deadline 0 days (min is 1)
+	// Deadline 0 hours (min is 1)
 	payload := "Test|0|10|100|5.000"
 	result, _, _ := CallContract(
 		t, ct,
@@ -143,14 +192,14 @@ func TestCreateLotteryInvalidDeadline(t *testing.T) {
 	)
 
 	assert.False(t, result.Success)
-	assert.Contains(t, result.Ret, "deadline must be at least 1 day")
+	assert.Contains(t, result.Ret, "deadline must be at least 1 hour")
 }
 
 // TestCreateLotteryBurnTooLow tests burn percent below minimum (5%)
 func TestCreateLotteryBurnTooLow(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Test|7|4|100|5.000"
+	payload := "Test|168|4|100|5.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -170,7 +219,7 @@ func TestCreateLotterySharesNotSum100(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Shares sum to 110
-	payload := "Test|7|10|50,40,20|5.000"
+	payload := "Test|168|10|50,40,20|5.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -189,7 +238,7 @@ func TestCreateLotterySharesNotSum100(t *testing.T) {
 func TestCreateLotteryNegativeTicketPrice(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Test|7|10|100|-5.000"
+	payload := "Test|168|10|100|-5.000"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -208,7 +257,7 @@ func TestCreateLotteryInvalidFormat(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Missing parts
-	payload := "Test|7|10|100"
+	payload := "Test|168|10|100"
 	result, _, _ := CallContract(
 		t, ct,
 		"create_lottery",
@@ -224,6 +273,64 @@ func TestCreateLotteryInvalidFormat(t *testing.T) {
 }
 
 // ============================================================================
+// METADATA TESTS
+// ============================================================================
+
+// TestChangeLotteryMetadataStored tests metadata is saved as a raw string in its own state key
+func TestChangeLotteryMetadataStored(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Meta Test|168|10|100|5.000|testmeta"), nil, "hive:creator", true, uint(700_000_000))
+
+	metadata := "meta|data: {\"note\":\"do not parse\"}"
+	result, _, logs := CallContract(t, ct, "change_lottery_metadata", PayloadString("1|"+metadata), nil, "hive:creator", true, uint(700_000_000))
+
+	assert.True(t, result.Success)
+	assert.Contains(t, result.Ret, "lottery metadata updated")
+
+	hasEvent := false
+	for _, logValues := range logs {
+		for _, log := range logValues {
+			if strings.HasPrefix(log, "lm|") && strings.Contains(log, "id:1") {
+				hasEvent = true
+				assert.Contains(t, log, metadata)
+			}
+		}
+	}
+	assert.True(t, hasEvent, "Expected metadata changed event")
+
+	stored := ct.StateGet(ContractID, "lmd:1")
+	assert.Equal(t, metadata, stored)
+}
+
+// TestChangeLotteryMetadataMaxSize tests the metadata size limit is enforced at 500 chars
+func TestChangeLotteryMetadataMaxSize(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Meta Limit|168|10|100|5.000"), nil, "hive:creator", true, uint(10_000_000_000))
+
+	metadata := strings.Repeat("a", 500)
+	result, _, _ := CallContract(t, ct, "change_lottery_metadata", PayloadString("1|"+metadata), nil, "hive:creator", true, uint(10_000_000_000))
+
+	assert.True(t, result.Success)
+	assert.Equal(t, metadata, ct.StateGet(ContractID, "lmd:1"))
+}
+
+// TestChangeLotteryMetadataTooLarge tests that metadata over 500 chars is rejected
+func TestChangeLotteryMetadataTooLarge(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Meta Too Large|168|10|100|5.000"), nil, "hive:creator", true, uint(10_000_000_000))
+
+	metadata := strings.Repeat("b", 501)
+	result, _, _ := CallContract(t, ct, "change_lottery_metadata", PayloadString("1|"+metadata), nil, "hive:creator", false, uint(10_000_000_000))
+
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "metadata must be 500 characters or less")
+	assert.Equal(t, "", ct.StateGet(ContractID, "lmd:1"))
+}
+
+// ============================================================================
 // POSITIVE TESTS - Join Lottery
 // ============================================================================
 
@@ -232,7 +339,7 @@ func TestJoinLotterySingleTicket(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery first
-	payload := "Test Lottery|7|10|100|5.000"
+	payload := "Test Lottery|168|10|100|5.000"
 	CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", true, uint(700_000_000))
 
 	// Join with 1 ticket (5 HIVE)
@@ -263,12 +370,66 @@ func TestJoinLotterySingleTicket(t *testing.T) {
 	assert.True(t, hasEvent)
 }
 
+// TestJoinLotteryMaxTicketsExact tests joining up to a max tickets limit succeeds
+func TestJoinLotteryMaxTicketsExact(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Max Tickets|168|10|100|1.000|max_tickets=3"), nil, "hive:creator", true, uint(700_000_000))
+
+	result1, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("2.000"), "hive:alice", true, uint(700_000_000))
+	result2, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("1.000"), "hive:bob", true, uint(700_000_000))
+
+	assert.True(t, result1.Success)
+	assert.True(t, result2.Success)
+}
+
+// TestJoinLotteryMaxTicketsExceeded tests joining beyond max tickets is rejected
+func TestJoinLotteryMaxTicketsExceeded(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Max Tickets|168|10|100|1.000|max_tickets=3"), nil, "hive:creator", true, uint(700_000_000))
+
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("2.000"), "hive:alice", true, uint(700_000_000))
+
+	result, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("2.000"), "hive:bob", false, uint(700_000_000))
+
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "lottery max tickets exceeded")
+}
+
+// TestJoinLotteryMaxTicketsReached tests joining after limit is reached is rejected
+func TestJoinLotteryMaxTicketsReached(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("Max Tickets|168|10|100|1.000|max_tickets=2"), nil, "hive:creator", true, uint(700_000_000))
+
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("2.000"), "hive:alice", true, uint(700_000_000))
+
+	result, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("1.000"), "hive:bob", false, uint(700_000_000))
+
+	assert.False(t, result.Success)
+	assert.Contains(t, result.Ret, "lottery max tickets reached")
+}
+
+// TestJoinLotteryNoMaxTicketsCap tests that omitting max tickets allows more joins
+func TestJoinLotteryNoMaxTicketsCap(t *testing.T) {
+	ct := SetupContractTest()
+
+	CallContract(t, ct, "create_lottery", PayloadString("No Cap|168|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
+
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
+	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:bob", true, uint(700_000_000))
+	result, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:charlie", true, uint(700_000_000))
+
+	assert.True(t, result.Success)
+}
+
 // TestJoinLotteryMultipleTickets tests joining with multiple tickets
 func TestJoinLotteryMultipleTickets(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Join with 3 tickets (15 HIVE)
 	result, _, logs := CallContract(
@@ -299,7 +460,7 @@ func TestJoinLotteryMultipleParticipants(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|2.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|2.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Multiple people join
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("2.000"), "hive:alice", true, uint(700_000_000))
@@ -314,7 +475,7 @@ func TestJoinLotterySamePersonMultipleTimes(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Same person joins twice
 	result1, _, _ := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
@@ -334,7 +495,7 @@ func TestJoinLotteryNoIntent(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Try to join without intent
 	result, _, _ := CallContract(
@@ -374,7 +535,7 @@ func TestJoinLotteryInsufficientFunds(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with 10 HIVE ticket price
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|10.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|10.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Try to join with only 5 HIVE
 	result, _, _ := CallContract(
@@ -395,11 +556,11 @@ func TestJoinLotteryInsufficientFunds(t *testing.T) {
 func TestJoinLotteryAfterDeadline(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Create lottery with 1 day deadline
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	// Create lottery with 24 hour deadline
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
-	// Try to join after 2 days (deadline + 1 day)
-	futureTimestamp := "2025-09-05T00:00:00" // 2 days after default timestamp
+	// Try to join after 48 hours (deadline + 24 hours)
+	futureTimestamp := "2025-09-05T00:00:00" // 48 hours after default timestamp
 	result, _, _ := CallContractAt(
 		t, ct,
 		"join_lottery",
@@ -423,8 +584,8 @@ func TestJoinLotteryAfterDeadline(t *testing.T) {
 func TestExecuteLotterySingleWinner(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Create lottery: 1 day deadline, 10% burn, 100% to winner, 10 HIVE ticket
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|100|10.000"), nil, "hive:creator", true, uint(700_000_000))
+	// Create lottery: 24 hour deadline, 10% burn, 100% to winner, 10 HIVE ticket
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|100|10.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Three people join
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("10.000"), "hive:alice", true, uint(700_000_000))
@@ -473,7 +634,7 @@ func TestExecuteLotteryMultipleWinners(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery: 50%, 30%, 20% distribution
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Four people join
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
@@ -514,7 +675,7 @@ func TestExecuteLotteryWithMultipleTickets(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Alice buys 10 tickets, Bob buys 1 (Alice has 10x chance)
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("50.000"), "hive:alice", true, uint(700_000_000))
@@ -572,8 +733,8 @@ func TestExecuteLotteryNotFound(t *testing.T) {
 func TestExecuteLotteryBeforeDeadline(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Create lottery with 10 day deadline
-	CallContract(t, ct, "create_lottery", PayloadString("Test|10|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	// Create lottery with 240 hour deadline
+	CallContract(t, ct, "create_lottery", PayloadString("Test|240|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
 
 	// Try to execute immediately (before deadline)
@@ -596,7 +757,7 @@ func TestExecuteLotteryNoParticipants(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery but nobody joins
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Try to execute after deadline
 	futureTimestamp := "2025-09-05T00:00:00"
@@ -620,7 +781,7 @@ func TestExecuteLotteryTwice(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create and join lottery
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
 
 	// Execute once
@@ -661,7 +822,7 @@ func TestFewerParticipantsThanWinners(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with 3 winners but only 2 people join
-	CallContract(t, ct, "create_lottery", PayloadString("Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|24|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:bob", true, uint(700_000_000))
 
@@ -677,7 +838,7 @@ func TestFewerParticipantsThanWinners(t *testing.T) {
 func TestMaxBurnPercent(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Test|7|80|100|5.000"
+	payload := "Test|168|80|100|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
@@ -689,7 +850,7 @@ func TestExactTicketPurchase(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with 3 HIVE ticket price
-	CallContract(t, ct, "create_lottery", PayloadString("Test|7|10|100|3.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Test|168|10|100|3.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Alice sends 10 HIVE intent but should only be charged 9 HIVE (3 tickets)
 	result, _, logs := CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("10.000"), "hive:alice", true, uint(700_000_000))
@@ -722,15 +883,12 @@ func TestEmptyPayload(t *testing.T) {
 func TestPipeInLotteryName(t *testing.T) {
 	ct := SetupContractTest()
 
-	// Note: When pipe is in the name like "Test|Pipe", the split results in 6 parts instead of 5
-	// So it gets caught by the format validation before name validation
-	// The pipe character validation in code prevents edge cases where encoding might bypass this
+	// Note: When pipe is in the name like "Test|Pipe", the split shifts fields and breaks parsing
 	payload := "Test|Pipe|7|10|100|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
-	// Gets caught by format check because split creates 6 parts, not 5
-	assert.Contains(t, result.Ret, "invalid create_lottery payload format")
+	assert.Contains(t, result.Ret, "invalid deadline hours")
 }
 
 // TestLongLotteryName tests that names over 100 chars are rejected
@@ -738,7 +896,7 @@ func TestLongLotteryName(t *testing.T) {
 	ct := SetupContractTest()
 
 	longName := strings.Repeat("a", 101)
-	payload := longName + "|7|10|100|5.000"
+	payload := longName + "|168|10|100|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
@@ -750,7 +908,7 @@ func TestIntegerSharesOnly(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Try with decimal shares
-	payload := "Test|7|10|33.33,33.33,33.34|5.000"
+	payload := "Test|168|10|33.33,33.33,33.34|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
@@ -761,7 +919,7 @@ func TestIntegerSharesOnly(t *testing.T) {
 func TestNegativeWinnerShares(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Test|7|10|-10,60,50|5.000"
+	payload := "Test|168|10|-10,60,50|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
@@ -773,22 +931,22 @@ func TestMinTicketPrice(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Try with 0 price
-	payload := "Test|7|10|100|0"
+	payload := "Test|168|10|100|0"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "ticket price must be at least 0.001")
 }
 
-// TestMaxDeadlineDays tests maximum deadline validation
-func TestMaxDeadlineDays(t *testing.T) {
+// TestMaxDeadlineHours tests maximum deadline validation
+func TestMaxDeadlineHours(t *testing.T) {
 	ct := SetupContractTest()
 
-	payload := "Test|91|10|100|5.000"
+	payload := "Test|2184|10|100|5.000"
 	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString(payload), nil, "hive:creator", false, uint(700_000_000))
 
 	assert.False(t, result.Success)
-	assert.Contains(t, result.Ret, "deadline must be 90 days or less")
+	assert.Contains(t, result.Ret, "deadline must be 2160 hours or less")
 }
 
 // ============================================================================
@@ -800,7 +958,7 @@ func TestVerifyLotteryResults(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with multiple winners
-	CallContract(t, ct, "create_lottery", PayloadString("Verification Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Verification Test|24|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Add participants
 	CallContract(t, ct, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
@@ -839,7 +997,7 @@ func TestVerifyLotteryResults(t *testing.T) {
 	ct2 := SetupContractTest()
 
 	// Recreate the exact same lottery conditions
-	CallContract(t, ct2, "create_lottery", PayloadString("Verification Test|1|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct2, "create_lottery", PayloadString("Verification Test|24|10|50,30,20|5.000"), nil, "hive:creator", true, uint(700_000_000))
 	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:alice", true, uint(700_000_000))
 	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("10.000"), "hive:bob", true, uint(700_000_000))
 	CallContract(t, ct2, "join_lottery", PayloadString("1"), transferIntent("5.000"), "hive:charlie", true, uint(700_000_000))
@@ -885,7 +1043,7 @@ func TestVerifyLotteryFunction(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with 1 HIVE ticket price, similar to large scale test
-	CallContract(t, ct, "create_lottery", PayloadString("Verify Function Test|1|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Verify Function Test|24|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Add 50 participants to get better randomness (enough to make collisions extremely unlikely)
 	for i := 0; i < 50; i++ {
@@ -974,7 +1132,7 @@ func TestVerifyLotteryNotExecuted(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery but don't execute
-	CallContract(t, ct, "create_lottery", PayloadString("Not Executed|7|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	CallContract(t, ct, "create_lottery", PayloadString("Not Executed|168|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 
 	// Try to verify
 	result, _, _ := CallContract(t, ct, "verify_lottery", PayloadString("1|12345"), nil, "hive:anyone", false, uint(700_000_000))
@@ -988,8 +1146,8 @@ func TestLotteryWithDonation(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery with donation: 10% burn, 20% donation to hive:charity
-	// Format: name|days|burn%|shares|price|donationAccount|donationPercent
-	createResult, _, createLogs := CallContract(t, ct, "create_lottery", PayloadString("Charity Lottery|1|10|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
+	// Format: name|hours|burn%|shares|price|donationAccount|donationPercent
+	createResult, _, createLogs := CallContract(t, ct, "create_lottery", PayloadString("Charity Lottery|24|10|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
 	assert.True(t, createResult.Success)
 	assert.Contains(t, createResult.Ret, "lottery created with ID: 1")
 
@@ -1072,7 +1230,7 @@ func TestLotteryWithoutDonation(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Create lottery without donation (old format - 5 parts)
-	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Regular Lottery|1|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
+	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Regular Lottery|24|10|100|5.000"), nil, "hive:creator", true, uint(700_000_000))
 	assert.True(t, createResult.Success)
 	assert.Contains(t, createResult.Ret, "lottery created with ID: 1")
 
@@ -1107,27 +1265,27 @@ func TestLotteryDonationValidation(t *testing.T) {
 	ct := SetupContractTest()
 
 	// Test: donation percent too high (>50%)
-	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Too High|1|10|100|5.000|hive:charity|51"), nil, "hive:creator", false, uint(700_000_000))
+	result, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Too High|24|10|100|5.000|hive:charity|51"), nil, "hive:creator", false, uint(700_000_000))
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "donation percent must be between 0 and 50")
 
 	// Test: donation percent negative
-	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Negative|1|10|100|5.000|hive:charity|-5"), nil, "hive:creator", false, uint(700_000_000))
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Negative|24|10|100|5.000|hive:charity|-5"), nil, "hive:creator", false, uint(700_000_000))
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "donation percent must be between 0 and 50")
 
 	// Test: burn + donation exceeds 90%
-	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Too Much|1|75|100|5.000|hive:charity|20"), nil, "hive:creator", false, uint(700_000_000))
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Too Much|24|75|100|5.000|hive:charity|20"), nil, "hive:creator", false, uint(700_000_000))
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "burn percent + donation percent must not exceed 90")
 
 	// Test: empty donation account
-	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Empty Account|1|10|100|5.000||10"), nil, "hive:creator", false, uint(700_000_000))
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Empty Account|24|10|100|5.000||10"), nil, "hive:creator", false, uint(700_000_000))
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Ret, "donation account cannot be empty if provided")
 
 	// Test: valid donation at maximum limits (burn 70% + donation 20% = 90%)
-	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Max Valid|1|70|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
+	result, _, _ = CallContract(t, ct, "create_lottery", PayloadString("Max Valid|24|70|100|5.000|hive:charity|20"), nil, "hive:creator", true, uint(700_000_000))
 	assert.True(t, result.Success)
 }
 
@@ -1137,7 +1295,7 @@ func TestLotteryDonationValidation(t *testing.T) {
 // 	ct := SetupContractTestLargeScale()
 
 // 	// Create lottery with 1 HIVE ticket price
-// 	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Large Scale Test|7|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
+// 	createResult, _, _ := CallContract(t, ct, "create_lottery", PayloadString("Large Scale Test|168|10|100|1.000"), nil, "hive:creator", true, uint(700_000_000))
 // 	assert.True(t, createResult.Success)
 
 // 	// Track total RC cost for all joins

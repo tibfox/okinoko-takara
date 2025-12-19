@@ -51,8 +51,9 @@ type Lottery struct {
 	Creator         sdk.Address
 	Name            string
 	CreatedAt       int64
-	DeadlineDays    uint64
+	DeadlineHours   uint64
 	DeadlineUnix    int64
+	MaxTickets      uint64
 	BurnPercent     float64
 	TicketPrice     Amount
 	Asset           sdk.Asset
@@ -68,6 +69,7 @@ type Lottery struct {
 	DonationAccount sdk.Address
 	DonationPercent float64
 	DonatedAmount   Amount
+	Metadata        string
 }
 
 // Winner represents a lottery winner
@@ -80,18 +82,26 @@ type Winner struct {
 // CreateLotteryArgs represents arguments for creating a lottery
 type CreateLotteryArgs struct {
 	Name            string
-	DeadlineDays    uint64
+	DeadlineHours   uint64
+	MaxTickets      uint64
 	BurnPercent     float64
 	WinnerShares    []float64
 	TicketPrice     Amount
 	Asset           sdk.Asset
 	DonationAccount sdk.Address
 	DonationPercent float64
+	MetaData        string
 }
 
 // JoinLotteryArgs represents arguments for joining a lottery
 type JoinLotteryArgs struct {
 	LotteryID uint64
+}
+
+// ChangeLotteryMetadataArgs represents arguments for changing a lottery's metadata
+type ChangeLotteryMetadataArgs struct {
+	LotteryID uint64
+	MetaData  string
 }
 
 // ExecuteLotteryArgs represents arguments for executing a lottery

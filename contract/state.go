@@ -13,6 +13,11 @@ func getLotteryMetadataKey(id uint64) string {
 	return "lm:" + strconv.FormatUint(id, 10)
 }
 
+// getLotteryMetadataValueKey returns the storage key for lottery metadata payloads by ID
+func getLotteryMetadataValueKey(id uint64) string {
+	return "lmd:" + strconv.FormatUint(id, 10)
+}
+
 // getLotteryPoolStatsKey returns the storage key for lottery pool statistics
 func getLotteryPoolStatsKey(id uint64) string {
 	return "ls:" + strconv.FormatUint(id, 10)
@@ -48,6 +53,22 @@ func saveLotteryMetadata(m *LotteryMetadata) {
 	key := getLotteryMetadataKey(m.ID)
 	data := encodeLotteryMetadata(m)
 	sdk.StateSetObject(key, data)
+}
+
+// loadLotteryMetadataValue retrieves the free-form lottery metadata string
+func loadLotteryMetadataValue(id uint64) string {
+	key := getLotteryMetadataValueKey(id)
+	dataPtr := sdk.StateGetObject(key)
+	if dataPtr == nil {
+		return ""
+	}
+	return *dataPtr
+}
+
+// saveLotteryMetadataValue stores the free-form lottery metadata string
+func saveLotteryMetadataValue(id uint64, value string) {
+	key := getLotteryMetadataValueKey(id)
+	sdk.StateSetObject(key, value)
 }
 
 // loadLotteryPoolStats retrieves lottery pool statistics
@@ -139,8 +160,9 @@ func loadLottery(id uint64) *Lottery {
 		Creator:         meta.Creator,
 		Name:            meta.Name,
 		CreatedAt:       meta.CreatedAt,
-		DeadlineDays:    meta.DeadlineDays,
+		DeadlineHours:   meta.DeadlineHours,
 		DeadlineUnix:    meta.DeadlineUnix,
+		MaxTickets:      meta.MaxTickets,
 		BurnPercent:     meta.BurnPercent,
 		TicketPrice:     meta.TicketPrice,
 		Asset:           meta.Asset,
@@ -156,6 +178,7 @@ func loadLottery(id uint64) *Lottery {
 		DonationAccount: meta.DonationAccount,
 		DonationPercent: meta.DonationPercent,
 		DonatedAmount:   meta.DonatedAmount,
+		Metadata:        loadLotteryMetadataValue(id),
 	}
 }
 
@@ -168,8 +191,9 @@ func saveLottery(l *Lottery) {
 		Creator:         l.Creator,
 		Name:            l.Name,
 		CreatedAt:       l.CreatedAt,
-		DeadlineDays:    l.DeadlineDays,
+		DeadlineHours:   l.DeadlineHours,
 		DeadlineUnix:    l.DeadlineUnix,
+		MaxTickets:      l.MaxTickets,
 		BurnPercent:     l.BurnPercent,
 		TicketPrice:     l.TicketPrice,
 		Asset:           l.Asset,
@@ -184,6 +208,7 @@ func saveLottery(l *Lottery) {
 		DonatedAmount:   l.DonatedAmount,
 	}
 	saveLotteryMetadata(meta)
+	saveLotteryMetadataValue(l.ID, l.Metadata)
 
 	// Save pool stats
 	stats := &LotteryPoolStats{

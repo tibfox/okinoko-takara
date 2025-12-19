@@ -20,8 +20,9 @@ func create_lottery(payload *string) *string {
 		Creator:         sender,
 		Name:            args.Name,
 		CreatedAt:       now,
-		DeadlineDays:    args.DeadlineDays,
-		DeadlineUnix:    now + int64(args.DeadlineDays*24*60*60),
+		DeadlineHours:   args.DeadlineHours,
+		DeadlineUnix:    now + int64(args.DeadlineHours*60*60),
+		MaxTickets:      args.MaxTickets,
 		BurnPercent:     args.BurnPercent,
 		TicketPrice:     args.TicketPrice,
 		Asset:           sdk.AssetHive, // Default to HIVE, could be parameterized
@@ -34,6 +35,7 @@ func create_lottery(payload *string) *string {
 		DonationAccount: args.DonationAccount,
 		DonationPercent: args.DonationPercent,
 		DonatedAmount:   0,
+		Metadata:        args.MetaData,
 	}
 
 	// Save lottery
@@ -41,8 +43,38 @@ func create_lottery(payload *string) *string {
 
 	// Emit event
 	emitLotteryCreated(lottery)
+	if args.MetaData != "" {
+		emitLotteryMetadataChanged(lottery.ID, args.MetaData)
+	}
 
 	ret := "lottery created with ID: " + strconv.FormatUint(lottery.ID, 10)
+	return &ret
+}
+
+//export change_lottery_metadata
+func change_lottery_metadata(payload *string) *string {
+	payloadStr := unwrapPayload(payload, "change_lottery_metadata payload missing")
+	args := parseChangeLotteryMetadata(payloadStr)
+
+	// Load lottery metadata
+	meta := loadLotteryMetadata(args.LotteryID)
+	if meta == nil {
+		sdk.Abort("lottery not found")
+	}
+
+	// Only creator can change metadata
+	sender := getSenderAddress()
+	if meta.Creator.String() != sender.String() {
+		sdk.Abort("only lottery creator can change metadata")
+	}
+
+	// Update metadata
+	saveLotteryMetadataValue(args.LotteryID, args.MetaData)
+
+	// Emit event
+	emitLotteryMetadataChanged(meta.ID, args.MetaData)
+
+	ret := "lottery metadata updated"
 	return &ret
 }
 
@@ -95,10 +127,17 @@ func join_lottery(payload *string) *string {
 
 	senderStr := sender.String()
 
-	// Load pool stats
-	stats := loadLotteryPoolStats(args.LotteryID)
-
 	// Calculate ticket range for this purchase
+	stats := loadLotteryPoolStats(args.LotteryID)
+	if meta.MaxTickets > 0 {
+		if stats.TotalTickets >= meta.MaxTickets {
+			sdk.Abort("lottery max tickets reached")
+		}
+		if stats.TotalTickets+ticketCount > meta.MaxTickets {
+			sdk.Abort("lottery max tickets exceeded")
+		}
+	}
+
 	ticketStart := stats.TotalTickets
 	ticketEnd := stats.TotalTickets + ticketCount - 1
 

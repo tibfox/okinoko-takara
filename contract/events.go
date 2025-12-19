@@ -42,6 +42,19 @@ func emitLotteryCreated(l *Lottery) {
 	sdk.Log(event)
 }
 
+// emitLotteryMetadataChanged logs a lottery metadata change event
+func emitLotteryMetadataChanged(lotteryID uint64, metadata string) {
+	// Format: lm|id:<id>|metadata:<metadata>
+
+	event := fmt.Sprintf(
+		"lm|id:%d|metadata:%s",
+		lotteryID,
+		metadata,
+	)
+
+	sdk.Log(event)
+}
+
 // emitLotteryJoined logs a lottery join event
 func emitLotteryJoined(lotteryID uint64, participant sdk.Address, ticketCount uint64, totalPaid Amount, asset sdk.Asset, ticketStart uint64, ticketEnd uint64) {
 	// Format: lj|id:<id>|participant:<address>|tickets:<count>|paid:<amount>|asset:<asset>|ticket_start:<start>|ticket_end:<end>
