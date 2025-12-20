@@ -114,6 +114,7 @@ func parseCreateLottery(payload string) *CreateLotteryArgs {
 		if donationAccount == "" {
 			sdk.Abort("donation account cannot be empty if provided")
 		}
+		// donation account could be a dao project in future - for now just basic user address
 		args.DonationAccount = sdk.Address(donationAccount)
 
 		donationPercent, err := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
@@ -125,7 +126,7 @@ func parseCreateLottery(payload string) *CreateLotteryArgs {
 		}
 		args.DonationPercent = donationPercent
 
-		// Validate total percentages don't exceed 100%
+		// Validate total percentages don't exceed 90% so that at least 10% goes to winners
 		if burnPercent+donationPercent > 90.0 {
 			sdk.Abort("burn percent + donation percent must not exceed 90")
 		}
@@ -136,6 +137,8 @@ func parseCreateLottery(payload string) *CreateLotteryArgs {
 		args.MetaData = strings.TrimSpace(parts[5])
 	} else if len(parts) == 8 {
 		args.MetaData = strings.TrimSpace(parts[7])
+	} else {
+		sdk.Abort("invalid create_lottery payload format: expected 6 or 8 parts for metadata")
 	}
 	if len(args.MetaData) > 500 {
 		sdk.Abort("metadata must be 500 characters or less")

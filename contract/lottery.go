@@ -25,7 +25,7 @@ func create_lottery(payload *string) *string {
 		MaxTickets:      args.MaxTickets,
 		BurnPercent:     args.BurnPercent,
 		TicketPrice:     args.TicketPrice,
-		Asset:           sdk.AssetHive, // Default to HIVE, could be parameterized
+		Asset:           sdk.AssetHive, // Default to HIVE, could be parameterized in the future
 		WinnerShares:    args.WinnerShares,
 		Pool:            0,
 		Participants:    make(map[string]uint64),
