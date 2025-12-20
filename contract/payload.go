@@ -137,8 +137,6 @@ func parseCreateLottery(payload string) *CreateLotteryArgs {
 		args.MetaData = strings.TrimSpace(parts[5])
 	} else if len(parts) == 8 {
 		args.MetaData = strings.TrimSpace(parts[7])
-	} else {
-		sdk.Abort("invalid create_lottery payload format: expected 6 or 8 parts for metadata")
 	}
 	if len(args.MetaData) > 500 {
 		sdk.Abort("metadata must be 500 characters or less")
